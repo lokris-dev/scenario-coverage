@@ -50,6 +50,15 @@ final class ScenarioStore
      */
     private array $usedIds = [];
 
+    /**
+     * Map "FQCN de classe de test → index dans $records". Une classe #[Scenario]
+     * est UN scénario : ses méthodes de test multiples (parcours nominal, accès
+     * refusé, variantes…) sont agrégées dans un seul enregistrement.
+     *
+     * @var array<string, int>
+     */
+    private array $indexByClass = [];
+
     public function __construct(
         /** Chemin du fichier JSON de sortie (ex: var/scenario-coverage.json) */
         private readonly string $outputFile,
@@ -177,6 +186,29 @@ final class ScenarioStore
             }
         }
 
+        // Une classe #[Scenario] = UN scénario. Si elle a déjà produit un
+        // enregistrement (autre méthode de test de la même classe), on fusionne :
+        // union du coverage, durée cumulée, pire statut. On ne crée pas de doublon.
+        if (isset($this->indexByClass[$testClass])) {
+            $i    = $this->indexByClass[$testClass];
+            $prev = $this->records[$i];
+
+            $this->records[$i] = new ScenarioRecord(
+                id:          $prev->id,
+                title:       $prev->title,
+                description: $prev->description,
+                mandatory:   $prev->mandatory,
+                tags:        $prev->tags,
+                testClass:   $prev->testClass,
+                testFile:    $prev->testFile,
+                status:      $this->worstStatus($prev->status, $status),
+                duration:    $prev->duration + $duration,
+                coverage:    $this->mergeCoverage($prev->coverage, $filtered),
+            );
+
+            return;
+        }
+
         // ID = nom court de la classe de test. strrpos retourne false en l'absence de
         // namespace : on garde alors le FQCN complet (évite de tronquer le 1er caractère).
         $pos     = strrpos($testClass, '\\');
@@ -191,6 +223,7 @@ final class ScenarioStore
         }
         $this->usedIds[$id] = $testClass;
 
+        $this->indexByClass[$testClass] = count($this->records);
         $this->records[] = new ScenarioRecord(
             id:          $id,
             title:       $title,
@@ -203,6 +236,37 @@ final class ScenarioStore
             duration:    $duration,
             coverage:    $filtered,
         );
+    }
+
+    /**
+     * Fusionne deux cartes de coverage brut Xdebug ([fichier][ligne] => 1|-1|-2).
+     * Une ligne couverte (1) prime sur exécutable-non-couverte (-1), qui prime
+     * sur le code mort (-2) : on conserve donc la valeur maximale par ligne.
+     *
+     * @param array<string, array<int, int>> $base
+     * @param array<string, array<int, int>> $add
+     * @return array<string, array<int, int>>
+     */
+    private function mergeCoverage(array $base, array $add): array
+    {
+        foreach ($add as $file => $lines) {
+            foreach ($lines as $lineNo => $value) {
+                $base[$file][$lineNo] = max($base[$file][$lineNo] ?? $value, $value);
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * Statut le plus grave entre deux exécutions d'une même classe de scénario
+     * (error > failed > skipped > passed).
+     */
+    private function worstStatus(string $a, string $b): string
+    {
+        $rank = ['passed' => 0, 'skipped' => 1, 'failed' => 2, 'error' => 3];
+
+        return ($rank[$b] ?? 0) > ($rank[$a] ?? 0) ? $b : $a;
     }
 
     /**
