@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Lokris\TrajectoryCoverage\Coverage;
+namespace Lokris\ScenarioCoverage\Coverage;
 
 use RuntimeException;
 
 /**
- * Accumule les enregistrements de trajectoire pendant l'exécution de la suite PHPUnit,
+ * Accumule les enregistrements de scénario pendant l'exécution de la suite PHPUnit,
  * puis les persiste sur disque en JSON pour être lus par le générateur de rapport.
  *
  * Cycle de vie :
- *   1. beginTrajectory()  — appelé avant le test, démarre la capture (Xdebug ou pcov)
- *   2. endTrajectory()    — appelé après le test, stocke le TrajectoryRecord en mémoire
+ *   1. beginScenario()  — appelé avant le test, démarre la capture (Xdebug ou pcov)
+ *   2. endScenario()    — appelé après le test, stocke le ScenarioRecord en mémoire
  *   3. flush()            — appelé en fin d'exécution, écrit le fichier JSON
  */
-final class TrajectoryStore
+final class ScenarioStore
 {
-    /** @var TrajectoryRecord[] */
+    /** @var ScenarioRecord[] */
     private array $records = [];
 
     /** Xdebug/pcov disponible ? */
@@ -51,7 +51,7 @@ final class TrajectoryStore
     private array $usedIds = [];
 
     public function __construct(
-        /** Chemin du fichier JSON de sortie (ex: var/trajectory-coverage.json) */
+        /** Chemin du fichier JSON de sortie (ex: var/scenario-coverage.json) */
         private readonly string $outputFile,
         /** Seuls les fichiers sous ce chemin sont inclus dans le coverage (ex: src/) */
         private readonly string $srcRoot,
@@ -77,7 +77,7 @@ final class TrajectoryStore
      * Démarre la collecte de coverage pour un test.
      * À appeler juste avant l'exécution du test.
      */
-    public function beginTrajectory(): void
+    public function beginScenario(): void
     {
         // Réinitialiser le statut : 'passed' par défaut, écrasé si un event
         // Failed/Errored/Skipped survient pour ce test avant son Finished.
@@ -115,12 +115,12 @@ final class TrajectoryStore
      * @param string   $testFile  Chemin absolu du fichier de test
      * @param string   $status    passed|failed|skipped|error
      * @param float    $duration  Durée en secondes
-     * @param string   $title     Titre de la trajectoire (#[Trajectory])
-     * @param string   $desc      Description (#[Trajectory])
-     * @param bool     $mandatory Obligatoire (#[Trajectory])
-     * @param string[] $tags      Tags (#[Trajectory])
+     * @param string   $title     Titre de la scénario (#[Scenario])
+     * @param string   $desc      Description (#[Scenario])
+     * @param bool     $mandatory Obligatoire (#[Scenario])
+     * @param string[] $tags      Tags (#[Scenario])
      */
-    public function endTrajectory(
+    public function endScenario(
         string $testClass,
         string $testFile,
         string $status,
@@ -152,7 +152,7 @@ final class TrajectoryStore
         // où AU MOINS une ligne a réellement été exécutée (valeur == 1).
         // Avec CC_UNUSED, Xdebug remonte aussi les fichiers seulement autoloadés
         // (toutes lignes à -1/-2) : les garder gonflerait la liste des fichiers
-        // "couverts" par la trajectoire et alourdirait massivement le JSON.
+        // "couverts" par la scénario et alourdirait massivement le JSON.
         // On conserve en revanche les valeurs brutes (1/-1/-2) des fichiers retenus,
         // pour que le rapport puisse colorer les lignes couvertes vs non couvertes.
         $filtered = [];
@@ -172,7 +172,7 @@ final class TrajectoryStore
         $shortId = $pos === false ? $testClass : substr($testClass, $pos + 1);
 
         // Désambiguïser les collisions de nom court entre namespaces distincts,
-        // sinon deux trajectoires différentes s'écraseraient silencieusement.
+        // sinon deux scénarios différentes s'écraseraient silencieusement.
         $id     = $shortId;
         $suffix = 2;
         while (isset($this->usedIds[$id]) && $this->usedIds[$id] !== $testClass) {
@@ -180,7 +180,7 @@ final class TrajectoryStore
         }
         $this->usedIds[$id] = $testClass;
 
-        $this->records[] = new TrajectoryRecord(
+        $this->records[] = new ScenarioRecord(
             id:          $id,
             title:       $title,
             description: $desc,
@@ -195,11 +195,11 @@ final class TrajectoryStore
     }
 
     /**
-     * Arrête proprement la capture démarrée par beginTrajectory pour un test qui
-     * n'est PAS une trajectoire (classe non annotée #[Trajectory]), afin de ne pas
+     * Arrête proprement la capture démarrée par beginScenario pour un test qui
+     * n'est PAS une scénario (classe non annotée #[Scenario]), afin de ne pas
      * laisser une session de coverage ouverte polluer le test suivant.
      */
-    public function recordNonTrajectory(): void
+    public function recordNonScenario(): void
     {
         if ($this->driver === 'xdebug') {
             xdebug_stop_code_coverage(false);
@@ -224,7 +224,7 @@ final class TrajectoryStore
             'srcRoot'   => $this->srcRoot,
             'generatedAt' => date('Y-m-d H:i:s'),
             'records'   => array_map(
-                fn(TrajectoryRecord $r): array => $r->toArray(),
+                fn(ScenarioRecord $r): array => $r->toArray(),
                 $this->records
             ),
         ];
@@ -245,7 +245,7 @@ final class TrajectoryStore
     /**
      * Charge un store depuis un fichier JSON existant.
      *
-     * @return array{srcRoot: string, generatedAt: string, records: TrajectoryRecord[]}
+     * @return array{srcRoot: string, generatedAt: string, records: ScenarioRecord[]}
      */
     public static function loadFromFile(string $jsonFile): array
     {
@@ -264,7 +264,7 @@ final class TrajectoryStore
             'srcRoot'     => (string) ($data['srcRoot'] ?? ''),
             'generatedAt' => (string) ($data['generatedAt'] ?? ''),
             'records'     => array_map(
-                fn(array $r): TrajectoryRecord => TrajectoryRecord::fromArray($r),
+                fn(array $r): ScenarioRecord => ScenarioRecord::fromArray($r),
                 (array) ($data['records'] ?? [])
             ),
         ];
@@ -281,7 +281,7 @@ final class TrajectoryStore
         return $this->outputFile;
     }
 
-    /** @return TrajectoryRecord[] */
+    /** @return ScenarioRecord[] */
     public function getRecords(): array
     {
         return $this->records;

@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Lokris\TrajectoryCoverage\Report;
+namespace Lokris\ScenarioCoverage\Report;
 
-use Lokris\TrajectoryCoverage\Coverage\TrajectoryRecord;
+use Lokris\ScenarioCoverage\Coverage\ScenarioRecord;
 
 /**
  * Génère un rapport HTML interactif autonome (zéro dépendance externe).
  *
  * Le rapport est un unique fichier .html :
- *  - Arborescence de fichiers avec taux de couverture par trajectoire
- *  - Vue source avec highlighting PHP natif + annotations par trajectoire
- *  - Vue trajectoires avec couverture inversée (trajectoire → fichiers)
+ *  - Arborescence de fichiers avec taux de couverture par scénario
+ *  - Vue source avec highlighting PHP natif + annotations par scénario
+ *  - Vue scénarios avec couverture inversée (scénario → fichiers)
  *  - Dashboard global
  */
 final class HtmlReporter
 {
     /**
-     * @param TrajectoryRecord[] $records   Enregistrements produits par TrajectoryStore
+     * @param ScenarioRecord[] $records   Enregistrements produits par ScenarioStore
      * @param string             $projectName  Nom affiché dans l'en-tête
      * @param string             $srcRoot   Chemin absolu du src/ (pour les paths relatifs)
      * @param string             $generatedAt Date de génération
@@ -30,16 +30,16 @@ final class HtmlReporter
         string $generatedAt  = '',
     ): string {
         // ── 1. Construire la carte de couverture globale ──────────────────────
-        // fileMap[filePath][lineNo][] = trajectoryId
+        // fileMap[filePath][lineNo][] = scenarioId
         /** @var array<string, array<int, string[]>> $fileMap */
         $fileMap = [];
 
-        // trajectoryStats[id] = { title, description, status, duration, mandatory, tags, files[] }
-        /** @var array<string, array<string, mixed>> $trajectoryStats */
-        $trajectoryStats = [];
+        // scenarioStats[id] = { title, description, status, duration, mandatory, tags, files[] }
+        /** @var array<string, array<string, mixed>> $scenarioStats */
+        $scenarioStats = [];
 
         foreach ($records as $record) {
-            $trajectoryStats[$record->id] = [
+            $scenarioStats[$record->id] = [
                 'id'          => $record->id,
                 'title'       => $record->title,
                 'description' => $record->description,
@@ -55,21 +55,21 @@ final class HtmlReporter
                     if ($covered === 1) {
                         $fileMap[$file][$lineNo][] = $record->id;
                     } elseif (!isset($fileMap[$file][$lineNo])) {
-                        // Ligne exécutable mais non couverte par cette trajectoire
+                        // Ligne exécutable mais non couverte par cette scénario
                         $fileMap[$file][$lineNo] = $fileMap[$file][$lineNo] ?? [];
                     }
                 }
 
-                if (!in_array($file, $trajectoryStats[$record->id]['files'], true)) {
+                if (!in_array($file, $scenarioStats[$record->id]['files'], true)) {
                     /** @var array<string, mixed> $stat */
-                    $stat        = &$trajectoryStats[$record->id];
+                    $stat        = &$scenarioStats[$record->id];
                     $stat['files'][] = $file;
                 }
             }
         }
 
         // ── 2. Stats par fichier ──────────────────────────────────────────────
-        /** @var array<string, array{covered: int, total: int, percent: int, trajectories: string[]}> $fileStats */
+        /** @var array<string, array{covered: int, total: int, percent: int, scenarios: string[]}> $fileStats */
         $fileStats = [];
         foreach ($fileMap as $file => $lines) {
             $total   = count($lines);
@@ -80,14 +80,14 @@ final class HtmlReporter
                 'covered'      => $covered,
                 'total'        => $total,
                 'percent'      => $percent,
-                'trajectories' => array_values($tids),
+                'scenarios' => array_values($tids),
             ];
         }
 
         // ── 3. Stats globales ─────────────────────────────────────────────────
         $totalFiles      = count($fileStats);
         $totalTraj       = count($records);
-        $passedTraj      = count(array_filter($records, fn(TrajectoryRecord $r) => $r->status === 'passed'));
+        $passedTraj      = count(array_filter($records, fn(ScenarioRecord $r) => $r->status === 'passed'));
         $globalCovered   = array_sum(array_column($fileStats, 'covered'));
         $globalTotal     = array_sum(array_column($fileStats, 'total'));
         $globalPercent   = $globalTotal > 0 ? (int) round(($globalCovered / $globalTotal) * 100) : 0;
@@ -134,13 +134,13 @@ final class HtmlReporter
             'srcRoot'     => $srcRoot,
             'stats'       => [
                 'files'         => $totalFiles,
-                'trajectories'  => $totalTraj,
+                'scenarios'  => $totalTraj,
                 'passed'        => $passedTraj,
                 'globalPercent' => $globalPercent,
                 'globalCovered' => $globalCovered,
                 'globalTotal'   => $globalTotal,
             ],
-            'trajectories' => array_values($trajectoryStats),
+            'scenarios' => array_values($scenarioStats),
             'files'        => $fileStats,
             'fileLines'    => $fileMap,       // [file][line][] = tid
             'sources'      => $sourcesHtml,   // pre-highlighted HTML per file
@@ -198,7 +198,7 @@ final class HtmlReporter
     /**
      * Construit l'arbre de fichiers depuis la carte de stats.
      *
-     * @param array<string, array{covered: int, total: int, percent: int, trajectories: string[]}> $fileStats
+     * @param array<string, array{covered: int, total: int, percent: int, scenarios: string[]}> $fileStats
      * @return array<string, mixed>
      */
     private static function buildFileTree(array $fileStats, string $srcRoot): array
@@ -245,7 +245,7 @@ final class HtmlReporter
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trajectory Coverage — __PROJECT_NAME__</title>
+<title>Scenario Coverage — __PROJECT_NAME__</title>
 <style>
 /* ── Reset & Variables ────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -335,7 +335,7 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size
 .tree-dir-children{display:none}
 .tree-dir-children.open{display:block}
 
-/* ── Trajectory list ─────────────────────────────────────────────────────── */
+/* ── Scenario list ─────────────────────────────────────────────────────── */
 .traj-item{
   padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);
   transition:background .1s;
@@ -426,7 +426,7 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size
 .traj-badge:hover{background:rgba(88,166,255,.3)}
 .traj-badge.more{background:var(--bg4);color:var(--text3);border-color:var(--border)}
 
-/* ── Trajectory detail view ──────────────────────────────────────────────── */
+/* ── Scenario detail view ──────────────────────────────────────────────── */
 #view-traj{flex:1;flex-direction:column;overflow-y:auto;padding:24px;display:none}
 .traj-detail-header{margin-bottom:24px}
 .traj-detail-header h2{font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px}
@@ -466,12 +466,12 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size
 
 <!-- ── Header ──────────────────────────────────────────────────────────── -->
 <div id="header">
-  <h1><span class="icon">🎯</span> Trajectory Coverage</h1>
+  <h1><span class="icon">🎯</span> Scenario Coverage</h1>
   <div class="coverage-ring" id="header-ring">
     <span id="header-pct">…</span>
   </div>
   <div class="stat-pill"><span>Fichiers</span><span class="val" id="h-files">…</span></div>
-  <div class="stat-pill"><span>Trajectoires</span><span class="val" id="h-traj">…</span></div>
+  <div class="stat-pill"><span>Scénarios</span><span class="val" id="h-traj">…</span></div>
   <div class="stat-pill"><span>Réussies</span><span class="val" id="h-passed">…</span></div>
   <div class="header-spacer"></div>
   <span class="gen-date" id="h-date"></span>
@@ -484,7 +484,7 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size
   <div id="sidebar">
     <div class="sidebar-tabs">
       <div class="sidebar-tab active" data-tab="files">📁 Fichiers</div>
-      <div class="sidebar-tab" data-tab="traj">🎯 Trajectoires</div>
+      <div class="sidebar-tab" data-tab="traj">🎯 Scénarios</div>
     </div>
     <div class="sidebar-panel active" id="tab-files"></div>
     <div class="sidebar-panel" id="tab-traj"></div>
@@ -544,8 +544,8 @@ function initHeader() {
   document.getElementById('header-ring').style.setProperty('--pct', pct);
   document.getElementById('header-pct').textContent = pct + '%';
   document.getElementById('h-files').textContent   = s.files;
-  document.getElementById('h-traj').textContent    = s.trajectories;
-  document.getElementById('h-passed').textContent  = s.passed + '/' + s.trajectories;
+  document.getElementById('h-traj').textContent    = s.scenarios;
+  document.getElementById('h-passed').textContent  = s.passed + '/' + s.scenarios;
   document.getElementById('h-date').textContent    = DATA.generatedAt;
 }
 
@@ -577,7 +577,7 @@ function renderWelcome() {
   document.getElementById('view-welcome').innerHTML = `
     <div class="cov-bar-wrap">
       <div class="cov-bar-header">
-        <span class="cov-bar-title">Couverture globale par trajectoires</span>
+        <span class="cov-bar-title">Couverture globale par scénarios</span>
         <span class="cov-bar-pct" style="color:${color}">${pct}%</span>
       </div>
       <div class="cov-bar-track"><div class="cov-bar-fill" style="width:${pct}%;background:${color}"></div></div>
@@ -595,9 +595,9 @@ function renderWelcome() {
         <div class="sub">${full} à 100% · ${uncovered} non couverts</div>
       </div>
       <div class="card">
-        <div class="label">Trajectoires</div>
-        <div class="value">${s.trajectories}</div>
-        <div class="sub">${s.passed} passées · ${s.trajectories - s.passed} en échec/skip</div>
+        <div class="label">Scénarios</div>
+        <div class="value">${s.scenarios}</div>
+        <div class="sub">${s.passed} passées · ${s.scenarios - s.passed} en échec/skip</div>
       </div>
       <div class="card">
         <div class="label">Couverture</div>
@@ -679,11 +679,11 @@ function calcDirPct(node) {
   return tot > 0 ? Math.round((cov / tot) * 100) : undefined;
 }
 
-// ── Trajectory list ───────────────────────────────────────────────────────
+// ── Scenario list ───────────────────────────────────────────────────────
 function renderTrajList() {
   const container = document.getElementById('tab-traj');
   container.innerHTML = '';
-  DATA.trajectories.forEach(t => {
+  DATA.scenarios.forEach(t => {
     const el = document.createElement('div');
     el.className = 'traj-item';
     el.dataset.id = t.id;
@@ -700,7 +700,7 @@ function renderTrajList() {
         ${tags}
         ${t.mandatory ? '<span class="traj-tag" style="color:var(--orange);border-color:var(--orange)">obligatoire</span>' : ''}
       </div>`;
-    el.addEventListener('click', () => openTrajectory(t.id, el));
+    el.addEventListener('click', () => openScenario(t.id, el));
     container.appendChild(el);
   });
 }
@@ -730,7 +730,7 @@ function openFile(filePath, treeEl) {
     let cls = '';
     if (hasCovData) cls = isCovered ? 'covered' : 'uncovered';
 
-    // Badges trajectoire (max 3 + "+N")
+    // Badges scénario (max 3 + "+N")
     let badges = '';
     if (isCovered) {
       const shown = tids.slice(0, 3);
@@ -755,7 +755,7 @@ function openFile(filePath, treeEl) {
           <strong style="color:${color}">${st.percent || 0}%</strong> couverts
         </span>
         <span class="source-stat">${st.covered || 0}/${st.total || 0} lignes</span>
-        <span class="source-stat">${(st.trajectories || []).length} trajectoires</span>
+        <span class="source-stat">${(st.scenarios || []).length} scénarios</span>
       </div>
     </div>
     <div class="source-body">${linesHtml}</div>`;
@@ -763,9 +763,9 @@ function openFile(filePath, treeEl) {
   showView('source');
 }
 
-// ── Open trajectory ───────────────────────────────────────────────────────
-function openTrajectory(id, listEl) {
-  const traj = DATA.trajectories.find(t => t.id === id);
+// ── Open scenario ───────────────────────────────────────────────────────
+function openScenario(id, listEl) {
+  const traj = DATA.scenarios.find(t => t.id === id);
   if (!traj) return;
   activeTrajId = id;
 
@@ -778,7 +778,7 @@ function openTrajectory(id, listEl) {
   const filesHtml = files.map(f => {
     const st  = DATA.files[f] || {};
     const rel = relPath(f);
-    // Lignes couvertes par CETTE trajectoire dans ce fichier
+    // Lignes couvertes par CETTE scénario dans ce fichier
     const fileLinesData = DATA.fileLines[f] || {};
     const trajLines = Object.values(fileLinesData).filter(tids => tids.includes(id)).length;
     return `<div class="traj-file-card" data-file="${escHtml(f)}" title="${escHtml(f)}">
@@ -801,7 +801,7 @@ function openTrajectory(id, listEl) {
         ${tags}
       </div>
     </div>
-    <div class="section-title">Fichiers couverts par cette trajectoire</div>
+    <div class="section-title">Fichiers couverts par cette scénario</div>
     ${files.length === 0
       ? '<p style="color:var(--text2);font-size:13px">Aucun fichier couvert (coverage non disponible ou xdebug absent).</p>'
       : `<div class="traj-files-grid">${filesHtml}</div>`}`;
@@ -812,7 +812,7 @@ function openTrajectory(id, listEl) {
 function openTrajById(id) {
   // Trouver et cliquer sur l'item de la liste
   const listEl = document.querySelector(`#tab-traj [data-id="${CSS.escape(id)}"]`);
-  openTrajectory(id, listEl);
+  openScenario(id, listEl);
 }
 
 // ── Views ─────────────────────────────────────────────────────────────────
@@ -829,13 +829,13 @@ function switchSidebarTab(name) {
   $$('.sidebar-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
 }
 
-// ── Tooltip on trajectory badges ──────────────────────────────────────────
+// ── Tooltip on scenario badges ──────────────────────────────────────────
 const tooltip = document.getElementById('tooltip');
 document.addEventListener('mouseover', e => {
   const badge = e.target.closest('.traj-badge[data-tid]');
   if (!badge) { tooltip.style.display = 'none'; return; }
   const tid  = badge.dataset.tid;
-  const traj = DATA.trajectories.find(t => t.id === tid);
+  const traj = DATA.scenarios.find(t => t.id === tid);
   if (!traj) return;
   document.getElementById('tt-title').textContent = traj.id + ' — ' + traj.title;
   document.getElementById('tt-desc').textContent  = traj.description;
@@ -882,7 +882,7 @@ renderWelcome();
 const treeContainer = document.getElementById('tab-files');
 renderFileTree(DATA.tree, treeContainer);
 
-// Trajectory list
+// Scenario list
 renderTrajList();
 
 // Show welcome by default

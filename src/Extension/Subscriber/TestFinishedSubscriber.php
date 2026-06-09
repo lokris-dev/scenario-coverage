@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Lokris\TrajectoryCoverage\Extension\Subscriber;
+namespace Lokris\ScenarioCoverage\Extension\Subscriber;
 
-use Lokris\TrajectoryCoverage\Coverage\TrajectoryStore;
+use Lokris\ScenarioCoverage\Coverage\ScenarioStore;
 use PHPUnit\Event\Code\TestMethod;
 use PHPUnit\Event\Test\Finished;
 use PHPUnit\Event\Test\FinishedSubscriber;
@@ -14,12 +14,12 @@ use Throwable;
 /**
  * Déclenché après chaque méthode de test.
  *
- * Lit l'attribut #[Trajectory] sur la classe de test via la réflexion,
- * puis délègue à TrajectoryStore l'arrêt de capture et l'enregistrement.
+ * Lit l'attribut #[Scenario] sur la classe de test via la réflexion,
+ * puis délègue à ScenarioStore l'arrêt de capture et l'enregistrement.
  */
 final class TestFinishedSubscriber implements FinishedSubscriber
 {
-    public function __construct(private readonly TrajectoryStore $store)
+    public function __construct(private readonly ScenarioStore $store)
     {
     }
 
@@ -29,7 +29,7 @@ final class TestFinishedSubscriber implements FinishedSubscriber
 
         // On ne traite que les TestMethod (pas les DataProvider/etc.)
         if (!$test instanceof TestMethod) {
-            $this->store->recordNonTrajectory();
+            $this->store->recordNonScenario();
             return;
         }
 
@@ -43,47 +43,47 @@ final class TestFinishedSubscriber implements FinishedSubscriber
         // 'passed' par défaut si aucun échec/skip n'a été signalé pour ce test.
         $status = $this->store->currentStatus();
 
-        // Lire l'attribut #[Trajectory] PUIS l'instancier — le tout dans le try.
-        // On supporte plusieurs namespaces (recherche par nom court de classe) :
-        //   - Lokris\TrajectoryCoverage\Attribute\Trajectory  (package standalone)
-        //   - Stamina\CoreBundle\Attribute\Trajectory         (bundle natif Stamina)
+        // Lire l'attribut #[Scenario] PUIS l'instancier — le tout dans le try.
+        // La détection se fait par NOM COURT de classe ('Scenario'), donc indépendante
+        // du namespace : tout attribut nommé Scenario (quel que soit son namespace) est
+        // reconnu — typiquement Lokris\ScenarioCoverage\Attribute\Scenario.
         // Si la réflexion OU l'instanciation de l'attribut échoue (Error/TypeError du
-        // constructeur), on arrête proprement la capture via recordNonTrajectory() pour
+        // constructeur), on arrête proprement la capture via recordNonScenario() pour
         // ne pas laisser une session Xdebug ouverte polluer le test suivant.
         try {
             $ref = new ReflectionClass($className);
 
-            $trajectoryAttr = null;
+            $scenarioAttr = null;
             foreach ($ref->getAttributes() as $attr) {
                 $attrName = $attr->getName();
-                if ($attrName === 'Trajectory' || str_ends_with($attrName, '\\Trajectory')) {
-                    $trajectoryAttr = $attr;
+                if ($attrName === 'Scenario' || str_ends_with($attrName, '\\Scenario')) {
+                    $scenarioAttr = $attr;
                     break;
                 }
             }
 
-            if ($trajectoryAttr === null) {
-                // Test non annoté comme trajectoire — on arrête la capture proprement.
-                $this->store->recordNonTrajectory();
+            if ($scenarioAttr === null) {
+                // Test non annoté comme scénario — on arrête la capture proprement.
+                $this->store->recordNonScenario();
                 return;
             }
 
             // Instancier l'attribut (tolérant sur l'absence de `tags`).
-            $trajectory = $trajectoryAttr->newInstance();
+            $scenario = $scenarioAttr->newInstance();
         } catch (Throwable) {
-            $this->store->recordNonTrajectory($className, $status, $duration);
+            $this->store->recordNonScenario();
             return;
         }
 
-        $this->store->endTrajectory(
+        $this->store->endScenario(
             testClass: $className,
             testFile:  $testFile,
             status:    $status,
             duration:  $duration,
-            title:     $trajectory->title,
-            desc:      $trajectory->description,
-            mandatory: $trajectory->mandatory,
-            tags:      property_exists($trajectory, 'tags') ? $trajectory->tags : [],
+            title:     $scenario->title,
+            desc:      $scenario->description,
+            mandatory: $scenario->mandatory,
+            tags:      property_exists($scenario, 'tags') ? $scenario->tags : [],
         );
     }
 }

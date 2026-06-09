@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Lokris\TrajectoryCoverage\Extension\Subscriber;
+namespace Lokris\ScenarioCoverage\Extension\Subscriber;
 
-use Lokris\TrajectoryCoverage\Coverage\TrajectoryStore;
+use Lokris\ScenarioCoverage\Coverage\ScenarioStore;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber as Subscriber;
 
@@ -19,7 +19,7 @@ use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber as Subscriber;
  */
 final class ExecutionFinishedSubscriber implements Subscriber
 {
-    public function __construct(private readonly TrajectoryStore $store)
+    public function __construct(private readonly ScenarioStore $store)
     {
     }
 
@@ -34,7 +34,7 @@ final class ExecutionFinishedSubscriber implements Subscriber
         fwrite(
             STDOUT,
             sprintf(
-                "\n[trajectory-coverage] ✅ %d trajectoire(s) enregistrée(s) → %s\n",
+                "\n[scenario-coverage] ✅ %d scénario(s) enregistrée(s) → %s\n",
                 count($records),
                 $this->store->outputFile()
             )

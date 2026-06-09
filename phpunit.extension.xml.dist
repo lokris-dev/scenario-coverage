@@ -8,8 +8,8 @@
     - XDEBUG_MODE=coverage  (ou pcov.enabled=1 dans php.ini)
 
   Exécution recommandée :
-    XDEBUG_MODE=coverage vendor/bin/phpunit --filter Trajectory
-    vendor/bin/trajectory-report --name="invoicing-bundle" --open
+    XDEBUG_MODE=coverage vendor/bin/phpunit --filter Scenario
+    vendor/bin/scenario-report --name="invoicing-bundle" --open
 -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
@@ -17,19 +17,19 @@
          colors="true">
 
     <testsuites>
-        <testsuite name="Trajectories">
-            <!-- Adapter au chemin de vos trajectoires -->
-            <directory>tests/Trajectory</directory>
+        <testsuite name="Scenarios">
+            <!-- Adapter au chemin de vos scénarios -->
+            <directory>tests/Scenario</directory>
         </testsuite>
     </testsuites>
 
     <extensions>
-        <bootstrap class="Lokris\TrajectoryCoverage\Extension\TrajectoryExtension">
+        <bootstrap class="Lokris\ScenarioCoverage\Extension\ScenarioExtension">
             <!--
               outputFile : où écrire le JSON de données (relatif à getcwd())
               srcRoot    : seuls les fichiers sous ce chemin sont inclus dans le coverage
             -->
-            <parameter name="outputFile" value="var/trajectory-coverage.json"/>
+            <parameter name="outputFile" value="var/scenario-coverage.json"/>
             <parameter name="srcRoot"    value="src"/>
         </bootstrap>
     </extensions>

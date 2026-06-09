@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Lokris\TrajectoryCoverage\Extension\Subscriber;
+namespace Lokris\ScenarioCoverage\Extension\Subscriber;
 
-use Lokris\TrajectoryCoverage\Coverage\TrajectoryStore;
+use Lokris\ScenarioCoverage\Coverage\ScenarioStore;
 use PHPUnit\Event\Test\Skipped;
 use PHPUnit\Event\Test\SkippedSubscriber;
 
@@ -14,7 +14,7 @@ use PHPUnit\Event\Test\SkippedSubscriber;
  */
 final class TestSkippedSubscriber implements SkippedSubscriber
 {
-    public function __construct(private readonly TrajectoryStore $store)
+    public function __construct(private readonly ScenarioStore $store)
     {
     }
 

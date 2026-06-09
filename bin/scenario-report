@@ -2,23 +2,23 @@
 <?php
 
 /**
- * trajectory-report — CLI autonome pour générer le rapport HTML.
+ * scenario-report — CLI autonome pour générer le rapport HTML.
  *
  * Usage :
- *   vendor/bin/trajectory-report [options]
+ *   vendor/bin/scenario-report [options]
  *
  * Options :
- *   --input   Chemin du JSON produit par l'extension PHPUnit  (défaut: var/trajectory-coverage.json)
- *   --output  Chemin du fichier HTML à générer               (défaut: var/trajectory-coverage.html)
+ *   --input   Chemin du JSON produit par l'extension PHPUnit  (défaut: var/scenario-coverage.json)
+ *   --output  Chemin du fichier HTML à générer               (défaut: var/scenario-coverage.html)
  *   --src     Racine src/ pour les chemins relatifs           (défaut: src/)
  *   --name    Nom du projet affiché dans le rapport           (défaut: dossier courant)
  *   --open    Ouvre le rapport dans le navigateur après génération
  *   --help    Affiche cette aide
  *
  * Exemple complet :
- *   vendor/bin/trajectory-report \
- *     --input=var/trajectory-coverage.json \
- *     --output=var/trajectory-coverage.html \
+ *   vendor/bin/scenario-report \
+ *     --input=var/scenario-coverage.json \
+ *     --output=var/scenario-coverage.html \
  *     --src=src/ \
  *     --name="invoicing-bundle" \
  *     --open
@@ -44,9 +44,9 @@ foreach ($autoloaders as $autoloader) {
 
 // Fallback PSR-4 garanti vers les sources du package. Indispensable quand le CLI
 // tourne hors d'un `composer install` (ex : l'autoload du projet hôte est chargé
-// mais ne connaît pas le namespace Lokris\TrajectoryCoverage).
+// mais ne connaît pas le namespace Lokris\ScenarioCoverage).
 spl_autoload_register(static function (string $class): void {
-    $prefix = 'Lokris\\TrajectoryCoverage\\';
+    $prefix = 'Lokris\\ScenarioCoverage\\';
     if (!str_starts_with($class, $prefix)) {
         return;
     }
@@ -56,8 +56,8 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
-use Lokris\TrajectoryCoverage\Coverage\TrajectoryStore;
-use Lokris\TrajectoryCoverage\Report\HtmlReporter;
+use Lokris\ScenarioCoverage\Coverage\ScenarioStore;
+use Lokris\ScenarioCoverage\Report\HtmlReporter;
 
 // ── Parsing des arguments ─────────────────────────────────────────────────
 $opts = getopt('', ['input:', 'output:', 'src:', 'name:', 'open', 'help']);
@@ -78,8 +78,8 @@ if (isset($opts['help'])) {
 }
 
 $projectRoot = getcwd() ?: '/';
-$inputFile   = $opts['input']  ?? ($projectRoot . '/var/trajectory-coverage.json');
-$outputFile  = $opts['output'] ?? ($projectRoot . '/var/trajectory-coverage.html');
+$inputFile   = $opts['input']  ?? ($projectRoot . '/var/scenario-coverage.json');
+$outputFile  = $opts['output'] ?? ($projectRoot . '/var/scenario-coverage.html');
 $srcOpt      = $opts['src'] ?? 'src';
 // Accepter un --src absolu (ex: /abs/src) comme relatif (ex: src/) au projet.
 $srcPath     = str_starts_with($srcOpt, '/') ? $srcOpt : $projectRoot . '/' . $srcOpt;
@@ -94,23 +94,23 @@ $projectName = $opts['name']   ?? basename($projectRoot);
 $openBrowser = isset($opts['open']);
 
 // ── Chargement des données ────────────────────────────────────────────────
-echo "\n🎯 Trajectory Coverage — génération du rapport\n";
+echo "\n🎯 Scenario Coverage — génération du rapport\n";
 echo str_repeat('─', 60) . "\n";
 
 try {
     echo "  📂 Source  : {$inputFile}\n";
-    $data = TrajectoryStore::loadFromFile($inputFile);
+    $data = ScenarioStore::loadFromFile($inputFile);
 } catch (\RuntimeException $e) {
     fwrite(STDERR, "\n❌ Erreur : " . $e->getMessage() . "\n");
     fwrite(STDERR, "   → Exécutez d'abord votre suite PHPUnit avec l'extension activée.\n\n");
     exit(1);
 }
 
-/** @var \Lokris\TrajectoryCoverage\Coverage\TrajectoryRecord[] $records */
+/** @var \Lokris\ScenarioCoverage\Coverage\ScenarioRecord[] $records */
 $records     = $data['records'];
 $generatedAt = $data['generatedAt'];
 
-echo "  🗂  Trajectoires trouvées : " . count($records) . "\n";
+echo "  🗂  Scénarios trouvées : " . count($records) . "\n";
 echo "  📅 Données du           : {$generatedAt}\n";
 echo "  🏷  Projet               : {$projectName}\n";
 echo "  📁 Racine src            : {$srcDir}\n";

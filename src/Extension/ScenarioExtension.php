@@ -2,39 +2,39 @@
 
 declare(strict_types=1);
 
-namespace Lokris\TrajectoryCoverage\Extension;
+namespace Lokris\ScenarioCoverage\Extension;
 
-use Lokris\TrajectoryCoverage\Coverage\TrajectoryStore;
-use Lokris\TrajectoryCoverage\Extension\Subscriber\ExecutionFinishedSubscriber;
-use Lokris\TrajectoryCoverage\Extension\Subscriber\TestErroredSubscriber;
-use Lokris\TrajectoryCoverage\Extension\Subscriber\TestFailedSubscriber;
-use Lokris\TrajectoryCoverage\Extension\Subscriber\TestFinishedSubscriber;
-use Lokris\TrajectoryCoverage\Extension\Subscriber\TestPreparedSubscriber;
-use Lokris\TrajectoryCoverage\Extension\Subscriber\TestSkippedSubscriber;
+use Lokris\ScenarioCoverage\Coverage\ScenarioStore;
+use Lokris\ScenarioCoverage\Extension\Subscriber\ExecutionFinishedSubscriber;
+use Lokris\ScenarioCoverage\Extension\Subscriber\TestErroredSubscriber;
+use Lokris\ScenarioCoverage\Extension\Subscriber\TestFailedSubscriber;
+use Lokris\ScenarioCoverage\Extension\Subscriber\TestFinishedSubscriber;
+use Lokris\ScenarioCoverage\Extension\Subscriber\TestPreparedSubscriber;
+use Lokris\ScenarioCoverage\Extension\Subscriber\TestSkippedSubscriber;
 use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
 
 /**
- * Extension PHPUnit 10/11 — collecte le code coverage par trajectoire.
+ * Extension PHPUnit 10/11 — collecte le code coverage par scénario.
  *
  * Activation dans phpunit.xml :
  *
  *   <extensions>
- *     <bootstrap class="Lokris\TrajectoryCoverage\Extension\TrajectoryExtension">
- *       <parameter name="outputFile" value="var/trajectory-coverage.json" />
+ *     <bootstrap class="Lokris\ScenarioCoverage\Extension\ScenarioExtension">
+ *       <parameter name="outputFile" value="var/scenario-coverage.json" />
  *       <parameter name="srcRoot"    value="src/" />
  *     </bootstrap>
  *   </extensions>
  *
  * Paramètres disponibles :
- *   - outputFile (défaut : var/trajectory-coverage.json)
+ *   - outputFile (défaut : var/scenario-coverage.json)
  *     Chemin du fichier JSON produit (relatif à la racine du projet).
  *   - srcRoot (défaut : src/)
  *     Seuls les fichiers sous ce chemin sont inclus dans les données de coverage.
  */
-final class TrajectoryExtension implements Extension
+final class ScenarioExtension implements Extension
 {
     public function bootstrap(
         Configuration     $configuration,
@@ -45,7 +45,7 @@ final class TrajectoryExtension implements Extension
         $projectRoot = getcwd() ?: '';
         $outputFile  = $projectRoot . '/' . ($parameters->has('outputFile')
             ? $parameters->get('outputFile')
-            : 'var/trajectory-coverage.json');
+            : 'var/scenario-coverage.json');
         $srcParam    = $parameters->has('srcRoot') ? $parameters->get('srcRoot') : 'src';
         // Accepter un srcRoot absolu comme relatif à la racine du projet.
         $srcPath     = str_starts_with($srcParam, '/') ? $srcParam : $projectRoot . '/' . $srcParam;
@@ -58,19 +58,19 @@ final class TrajectoryExtension implements Extension
             $srcRoot = $srcPath;
             fwrite(
                 STDERR,
-                "\n[trajectory-coverage] ⚠️  Répertoire source introuvable : {$srcParam}\n" .
+                "\n[scenario-coverage] ⚠️  Répertoire source introuvable : {$srcParam}\n" .
                 "  → Le filtrage de couverture utilisera ce chemin tel quel.\n\n"
             );
         }
 
-        $store = new TrajectoryStore($outputFile, $srcRoot);
+        $store = new ScenarioStore($outputFile, $srcRoot);
 
         // Avertir si Xdebug/pcov absent (rapport sans coverage mais metadata OK)
         if (!$store->isCoverageAvailable()) {
             fwrite(
                 STDERR,
-                "\n[trajectory-coverage] ⚠️  Xdebug/pcov non disponible — " .
-                "le rapport contiendra les métadonnées trajectoires mais PAS le code coverage.\n" .
+                "\n[scenario-coverage] ⚠️  Xdebug/pcov non disponible — " .
+                "le rapport contiendra les métadonnées scénarios mais PAS le code coverage.\n" .
                 "  → Installer ext-xdebug ou ext-pcov dans l'env de test.\n\n"
             );
         }

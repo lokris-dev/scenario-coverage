@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace Lokris\TrajectoryCoverage\Coverage;
+namespace Lokris\ScenarioCoverage\Coverage;
 
 /**
- * Enregistrement immuable d'une trajectoire exécutée.
+ * Enregistrement immuable d'une scénario exécutée.
  *
- * Stocke les métadonnées de la trajectoire + les lignes de code couvertes
+ * Stocke les métadonnées de la scénario + les lignes de code couvertes
  * pendant son exécution (collectées via Xdebug ou pcov).
  */
-final class TrajectoryRecord
+final class ScenarioRecord
 {
     /**
      * @param string   $id          Identifiant unique dérivé du FQCN du test (ex: "S01_CreateQuoteTest")
-     * @param string   $title       Titre humain (#[Trajectory] title)
-     * @param string   $description Description (#[Trajectory] description)
-     * @param bool     $mandatory   Trajectoire obligatoire
+     * @param string   $title       Titre humain (#[Scenario] title)
+     * @param string   $description Description (#[Scenario] description)
+     * @param bool     $mandatory   Scénario obligatoire
      * @param string[] $tags        Tags libres
      * @param string   $testClass   FQCN de la classe de test
      * @param string   $testFile    Chemin absolu du fichier de test

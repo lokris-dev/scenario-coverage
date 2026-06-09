@@ -1,6 +1,6 @@
 {
-    "name": "lokris/trajectory-coverage",
-    "description": "Mappe les trajectoires utilisateur (PHPUnit) sur le code source — rapport HTML interactif avec arborescence et couverture par trajectoire.",
+    "name": "lokris/scenario-coverage",
+    "description": "Mappe les scénarios utilisateur (PHPUnit) sur le code source — rapport HTML interactif avec arborescence et couverture par scénario.",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -18,18 +18,18 @@
     },
     "autoload": {
         "psr-4": {
-            "Lokris\\TrajectoryCoverage\\": "src/"
+            "Lokris\\ScenarioCoverage\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Lokris\\TrajectoryCoverage\\Tests\\": "tests/"
+            "Lokris\\ScenarioCoverage\\Tests\\": "tests/"
         }
     },
-    "bin": ["bin/trajectory-report"],
+    "bin": ["bin/scenario-report"],
     "extra": {
         "phpunit": {
-            "extension-bootstrap": "Lokris\\TrajectoryCoverage\\Extension\\TrajectoryExtension"
+            "extension-bootstrap": "Lokris\\ScenarioCoverage\\Extension\\ScenarioExtension"
         }
     },
     "config": {
