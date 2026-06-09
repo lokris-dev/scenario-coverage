@@ -29,68 +29,14 @@ final class HtmlReporter
         string $srcRoot      = '',
         string $generatedAt  = '',
     ): string {
-        // ── 1. Construire la carte de couverture globale ──────────────────────
-        // fileMap[filePath][lineNo][] = scenarioId
-        /** @var array<string, array<int, string[]>> $fileMap */
-        $fileMap = [];
-
-        // scenarioStats[id] = { title, description, status, duration, mandatory, tags, files[] }
-        /** @var array<string, array<string, mixed>> $scenarioStats */
-        $scenarioStats = [];
-
-        foreach ($records as $record) {
-            $scenarioStats[$record->id] = [
-                'id'          => $record->id,
-                'title'       => $record->title,
-                'description' => $record->description,
-                'status'      => $record->status,
-                'duration'    => round($record->duration, 3),
-                'mandatory'   => $record->mandatory,
-                'tags'        => $record->tags,
-                'files'       => [],
-            ];
-
-            foreach ($record->coverage as $file => $lines) {
-                foreach ($lines as $lineNo => $covered) {
-                    if ($covered === 1) {
-                        $fileMap[$file][$lineNo][] = $record->id;
-                    } elseif (!isset($fileMap[$file][$lineNo])) {
-                        // Ligne exécutable mais non couverte par cette scénario
-                        $fileMap[$file][$lineNo] = $fileMap[$file][$lineNo] ?? [];
-                    }
-                }
-
-                if (!in_array($file, $scenarioStats[$record->id]['files'], true)) {
-                    /** @var array<string, mixed> $stat */
-                    $stat        = &$scenarioStats[$record->id];
-                    $stat['files'][] = $file;
-                }
-            }
-        }
-
-        // ── 2. Stats par fichier ──────────────────────────────────────────────
-        /** @var array<string, array{covered: int, total: int, percent: int, scenarios: string[]}> $fileStats */
-        $fileStats = [];
-        foreach ($fileMap as $file => $lines) {
-            $total   = count($lines);
-            $covered = count(array_filter($lines, fn(array $tids): bool => count($tids) > 0));
-            $percent = $total > 0 ? (int) round(($covered / $total) * 100) : 0;
-            $tids    = array_unique(array_merge(...array_values(array_filter($lines, fn(array $t) => count($t) > 0))));
-            $fileStats[$file] = [
-                'covered'      => $covered,
-                'total'        => $total,
-                'percent'      => $percent,
-                'scenarios' => array_values($tids),
-            ];
-        }
-
-        // ── 3. Stats globales ─────────────────────────────────────────────────
-        $totalFiles      = count($fileStats);
-        $totalTraj       = count($records);
-        $passedTraj      = count(array_filter($records, fn(ScenarioRecord $r) => $r->status === 'passed'));
-        $globalCovered   = array_sum(array_column($fileStats, 'covered'));
-        $globalTotal     = array_sum(array_column($fileStats, 'total'));
-        $globalPercent   = $globalTotal > 0 ? (int) round(($globalCovered / $globalTotal) * 100) : 0;
+        // ── 1-3. Agrégation déléguée à CoverageData (logique partagée) ────────
+        // Même cœur de calcul que celui exposé aux consommateurs externes
+        // (ex. dashboard Symfony) : aucune duplication de l'agrégation.
+        $data          = CoverageData::fromRecords($records, $srcRoot, $generatedAt);
+        $fileMap       = $data->fileMap();
+        $scenarioStats = $data->scenarioStats();
+        $fileStats     = $data->fileStats();
+        $global        = $data->globalStats();
 
         // ── 4. Pré-rendu des sources PHP (highlight natif) ───────────────────
         /** @var array<string, string[]> $sourcesHtml  filePath => [line1_html, line2_html, ...] */
@@ -133,12 +79,12 @@ final class HtmlReporter
             'generatedAt' => $generatedAt,
             'srcRoot'     => $srcRoot,
             'stats'       => [
-                'files'         => $totalFiles,
-                'scenarios'  => $totalTraj,
-                'passed'        => $passedTraj,
-                'globalPercent' => $globalPercent,
-                'globalCovered' => $globalCovered,
-                'globalTotal'   => $globalTotal,
+                'files'         => $global['files'],
+                'scenarios'     => $global['scenarios'],
+                'passed'        => $global['passed'],
+                'globalPercent' => $global['globalPercent'],
+                'globalCovered' => $global['globalCovered'],
+                'globalTotal'   => $global['globalTotal'],
             ],
             'scenarios' => array_values($scenarioStats),
             'files'        => $fileStats,
