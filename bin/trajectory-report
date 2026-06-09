@@ -1,0 +1,170 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * trajectory-report — CLI autonome pour générer le rapport HTML.
+ *
+ * Usage :
+ *   vendor/bin/trajectory-report [options]
+ *
+ * Options :
+ *   --input   Chemin du JSON produit par l'extension PHPUnit  (défaut: var/trajectory-coverage.json)
+ *   --output  Chemin du fichier HTML à générer               (défaut: var/trajectory-coverage.html)
+ *   --src     Racine src/ pour les chemins relatifs           (défaut: src/)
+ *   --name    Nom du projet affiché dans le rapport           (défaut: dossier courant)
+ *   --open    Ouvre le rapport dans le navigateur après génération
+ *   --help    Affiche cette aide
+ *
+ * Exemple complet :
+ *   vendor/bin/trajectory-report \
+ *     --input=var/trajectory-coverage.json \
+ *     --output=var/trajectory-coverage.html \
+ *     --src=src/ \
+ *     --name="invoicing-bundle" \
+ *     --open
+ */
+
+declare(strict_types=1);
+
+// ── Autoload ──────────────────────────────────────────────────────────────
+$autoloaders = [
+    __DIR__ . '/../vendor/autoload.php',           // package standalone
+    __DIR__ . '/../../../autoload.php',             // dans un vendor/ Composer
+    getcwd() . '/vendor/autoload.php',              // depuis la racine du projet
+];
+
+// Autoload Composer optionnel : utile si le package est installé via Composer,
+// mais PAS requis — le package n'a aucune dépendance au runtime (rapport HTML autonome).
+foreach ($autoloaders as $autoloader) {
+    if (file_exists($autoloader)) {
+        require_once $autoloader;
+        break;
+    }
+}
+
+// Fallback PSR-4 garanti vers les sources du package. Indispensable quand le CLI
+// tourne hors d'un `composer install` (ex : l'autoload du projet hôte est chargé
+// mais ne connaît pas le namespace Lokris\TrajectoryCoverage).
+spl_autoload_register(static function (string $class): void {
+    $prefix = 'Lokris\\TrajectoryCoverage\\';
+    if (!str_starts_with($class, $prefix)) {
+        return;
+    }
+    $path = __DIR__ . '/../src/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+    if (is_file($path)) {
+        require_once $path;
+    }
+});
+
+use Lokris\TrajectoryCoverage\Coverage\TrajectoryStore;
+use Lokris\TrajectoryCoverage\Report\HtmlReporter;
+
+// ── Parsing des arguments ─────────────────────────────────────────────────
+$opts = getopt('', ['input:', 'output:', 'src:', 'name:', 'open', 'help']);
+
+if (isset($opts['help'])) {
+    // Afficher le bloc de documentation en tête de fichier, jusqu'au */ fermant.
+    // (On s'arrête sur le */ plutôt que sur un nombre de lignes magique qui
+    //  tronquait les exemples ou débordait du bloc.)
+    $docLines = [];
+    foreach (array_slice(explode("\n", (string) file_get_contents(__FILE__)), 3) as $line) {
+        if (str_contains($line, '*/')) {
+            break;
+        }
+        $docLines[] = ltrim($line, ' *');
+    }
+    fwrite(STDOUT, implode("\n", $docLines) . "\n");
+    exit(0);
+}
+
+$projectRoot = getcwd() ?: '/';
+$inputFile   = $opts['input']  ?? ($projectRoot . '/var/trajectory-coverage.json');
+$outputFile  = $opts['output'] ?? ($projectRoot . '/var/trajectory-coverage.html');
+$srcOpt      = $opts['src'] ?? 'src';
+// Accepter un --src absolu (ex: /abs/src) comme relatif (ex: src/) au projet.
+$srcPath     = str_starts_with($srcOpt, '/') ? $srcOpt : $projectRoot . '/' . $srcOpt;
+$srcDir      = realpath($srcPath);
+if ($srcDir === false) {
+    // Ne PAS retomber silencieusement sur 'src' : sinon un --src erroné serait
+    // ignoré sans avertissement et tous les chemins relatifs seraient faux.
+    fwrite(STDERR, "⚠️  Répertoire source introuvable : {$srcOpt} — chemins relatifs potentiellement incorrects.\n");
+    $srcDir = $srcPath;
+}
+$projectName = $opts['name']   ?? basename($projectRoot);
+$openBrowser = isset($opts['open']);
+
+// ── Chargement des données ────────────────────────────────────────────────
+echo "\n🎯 Trajectory Coverage — génération du rapport\n";
+echo str_repeat('─', 60) . "\n";
+
+try {
+    echo "  📂 Source  : {$inputFile}\n";
+    $data = TrajectoryStore::loadFromFile($inputFile);
+} catch (\RuntimeException $e) {
+    fwrite(STDERR, "\n❌ Erreur : " . $e->getMessage() . "\n");
+    fwrite(STDERR, "   → Exécutez d'abord votre suite PHPUnit avec l'extension activée.\n\n");
+    exit(1);
+}
+
+/** @var \Lokris\TrajectoryCoverage\Coverage\TrajectoryRecord[] $records */
+$records     = $data['records'];
+$generatedAt = $data['generatedAt'];
+
+echo "  🗂  Trajectoires trouvées : " . count($records) . "\n";
+echo "  📅 Données du           : {$generatedAt}\n";
+echo "  🏷  Projet               : {$projectName}\n";
+echo "  📁 Racine src            : {$srcDir}\n";
+
+// ── Génération du HTML ────────────────────────────────────────────────────
+echo "\n  ⚙️  Génération du rapport HTML...\n";
+
+$html = HtmlReporter::generate(
+    records:     $records,
+    projectName: $projectName,
+    srcRoot:     $srcDir,
+    generatedAt: $generatedAt,
+);
+
+// ── Écriture du fichier ───────────────────────────────────────────────────
+$outputDir = dirname($outputFile);
+if (!is_dir($outputDir) && !mkdir($outputDir, 0o755, true) && !is_dir($outputDir)) {
+    fwrite(STDERR, "❌ Impossible de créer le dossier : {$outputDir}\n");
+    exit(1);
+}
+
+file_put_contents($outputFile, $html);
+$sizeKb = round(strlen($html) / 1024);
+
+echo "  ✅ Rapport écrit         : {$outputFile} ({$sizeKb} Ko)\n";
+echo str_repeat('─', 60) . "\n\n";
+
+// Statistiques rapides
+$passed  = count(array_filter($records, fn($r) => $r->status === 'passed'));
+$failed  = count(array_filter($records, fn($r) => $r->status === 'failed'));
+$errored = count(array_filter($records, fn($r) => $r->status === 'error'));
+$skipped = count(array_filter($records, fn($r) => $r->status === 'skipped'));
+echo "  📊 Résumé\n";
+echo "     ✅ Passées  : {$passed}\n";
+if ($failed > 0)  echo "     ❌ Échouées : {$failed}\n";
+if ($errored > 0) echo "     💥 Erreurs  : {$errored}\n";
+if ($skipped > 0) echo "     ⏭  Ignorées : {$skipped}\n";
+echo "\n";
+
+// ── Ouverture navigateur ──────────────────────────────────────────────────
+if ($openBrowser) {
+    $url = 'file://' . realpath($outputFile);
+    $cmds = [
+        'xdg-open',  // Linux
+        'open',      // macOS
+        'start',     // Windows
+    ];
+    foreach ($cmds as $cmd) {
+        // escapeshellarg : un chemin contenant $(...), backticks ou guillemets ne
+        // doit pas être interprété par le shell (injection de commande).
+        exec($cmd . ' ' . escapeshellarg($url) . ' 2>/dev/null', result_code: $code);
+        if ($code === 0) break;
+    }
+    echo "  🌐 Ouverture dans le navigateur...\n";
+}
+
+exit(0);

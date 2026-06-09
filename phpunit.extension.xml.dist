@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Exemple d'intégration dans phpunit.xml d'un projet Stamina ou Symfony.
+  Copier/coller le bloc <extensions> dans votre phpunit.xml existant.
+
+  Prérequis coverage :
+    - PHP_ENV avec ext-xdebug ou ext-pcov
+    - XDEBUG_MODE=coverage  (ou pcov.enabled=1 dans php.ini)
+
+  Exécution recommandée :
+    XDEBUG_MODE=coverage vendor/bin/phpunit --filter Trajectory
+    vendor/bin/trajectory-report --name="invoicing-bundle" --open
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true">
+
+    <testsuites>
+        <testsuite name="Trajectories">
+            <!-- Adapter au chemin de vos trajectoires -->
+            <directory>tests/Trajectory</directory>
+        </testsuite>
+    </testsuites>
+
+    <extensions>
+        <bootstrap class="Lokris\TrajectoryCoverage\Extension\TrajectoryExtension">
+            <!--
+              outputFile : où écrire le JSON de données (relatif à getcwd())
+              srcRoot    : seuls les fichiers sous ce chemin sont inclus dans le coverage
+            -->
+            <parameter name="outputFile" value="var/trajectory-coverage.json"/>
+            <parameter name="srcRoot"    value="src"/>
+        </bootstrap>
+    </extensions>
+
+    <!--
+      Source à analyser (pour xdebug / pcov).
+      Adapter aux répertoires de votre projet.
+    -->
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+        <exclude>
+            <directory>src/vendor</directory>
+            <directory>tests</directory>
+        </exclude>
+    </source>
+
+</phpunit>

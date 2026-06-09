@@ -1,0 +1,38 @@
+{
+    "name": "lokris/trajectory-coverage",
+    "description": "Mappe les trajectoires utilisateur (PHPUnit) sur le code source — rapport HTML interactif avec arborescence et couverture par trajectoire.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        { "name": "Lokris", "email": "support@lokris.sarl" }
+    ],
+    "require": {
+        "php": ">=8.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "suggest": {
+        "ext-xdebug": "Requis pour la collecte de code coverage (mode coverage).",
+        "ext-pcov": "Alternative à Xdebug pour le code coverage."
+    },
+    "autoload": {
+        "psr-4": {
+            "Lokris\\TrajectoryCoverage\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Lokris\\TrajectoryCoverage\\Tests\\": "tests/"
+        }
+    },
+    "bin": ["bin/trajectory-report"],
+    "extra": {
+        "phpunit": {
+            "extension-bootstrap": "Lokris\\TrajectoryCoverage\\Extension\\TrajectoryExtension"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
