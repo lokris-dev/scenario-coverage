@@ -55,6 +55,14 @@ final class ScenarioStore
         private readonly string $outputFile,
         /** Seuls les fichiers sous ce chemin sont inclus dans le coverage (ex: src/) */
         private readonly string $srcRoot,
+        /**
+         * Noms de dossiers exclus du coverage (récursivement) : les fichiers de
+         * test ne sont pas du code de production et ne doivent pas peser sur les
+         * statistiques. Symétrique de l'exclusion appliquée par SourceScanner.
+         *
+         * @var string[]
+         */
+        private readonly array $excludeDirs = ['Tests', 'tests'],
     ) {
         // Détection du moteur de coverage. pcov expose ses fonctions dans le
         // namespace \pcov\* (et NON pcov_*) : il faut donc tester '\pcov\start'.
@@ -161,6 +169,9 @@ final class ScenarioStore
             if ($this->srcPrefix !== '' && !str_starts_with($realFile, $this->srcPrefix)) {
                 continue;
             }
+            if ($this->isExcluded($realFile)) {
+                continue;
+            }
             if (in_array(1, $lines, true)) {
                 $filtered[$realFile] = $lines;
             }
@@ -219,6 +230,17 @@ final class ScenarioStore
             throw new RuntimeException(sprintf('Impossible de créer le dossier "%s"', $dir));
         }
 
+        // Univers complet : fichiers source du bundle JAMAIS exécutés par un test.
+        // On les remonte à 0 % pour que les KPI et l'explorateur reflètent
+        // l'avancement réel (et pas seulement le code déjà couvert).
+        $covered = [];
+        foreach ($this->records as $r) {
+            foreach (array_keys($r->coverage) as $file) {
+                $covered[$file] = true;
+            }
+        }
+        $sourceFiles = (new SourceScanner($this->srcRoot, $this->excludeDirs))->scanUncovered($covered);
+
         $data = [
             'version'   => '1',
             'srcRoot'   => $this->srcRoot,
@@ -227,6 +249,7 @@ final class ScenarioStore
                 fn(ScenarioRecord $r): array => $r->toArray(),
                 $this->records
             ),
+            'sourceFiles' => $sourceFiles,
         ];
 
         $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -245,7 +268,7 @@ final class ScenarioStore
     /**
      * Charge un store depuis un fichier JSON existant.
      *
-     * @return array{srcRoot: string, generatedAt: string, records: ScenarioRecord[]}
+     * @return array{srcRoot: string, generatedAt: string, records: ScenarioRecord[], sourceFiles: array<string, list<int>>}
      */
     public static function loadFromFile(string $jsonFile): array
     {
@@ -267,6 +290,10 @@ final class ScenarioStore
                 fn(array $r): ScenarioRecord => ScenarioRecord::fromArray($r),
                 (array) ($data['records'] ?? [])
             ),
+            'sourceFiles' => array_map(
+                static fn(array $lines): array => array_map('intval', $lines),
+                (array) ($data['sourceFiles'] ?? [])
+            ),
         ];
     }
 
@@ -279,6 +306,22 @@ final class ScenarioStore
     public function outputFile(): string
     {
         return $this->outputFile;
+    }
+
+    /**
+     * Un fichier sous srcRoot tombe-t-il dans un dossier exclu (ex. Tests) ?
+     * Compare segment par segment le chemin relatif à srcRoot.
+     */
+    private function isExcluded(string $realFile): bool
+    {
+        if ($this->excludeDirs === [] || $this->srcPrefix === '') {
+            return false;
+        }
+
+        $relative = substr($realFile, strlen($this->srcPrefix));
+        $segments = explode(DIRECTORY_SEPARATOR, $relative);
+
+        return array_intersect($segments, $this->excludeDirs) !== [];
     }
 
     /** @return ScenarioRecord[] */

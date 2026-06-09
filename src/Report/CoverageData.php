@@ -29,12 +29,16 @@ final class CoverageData
     private ?array $fileStats = null;
 
     /**
-     * @param ScenarioRecord[] $records
+     * @param ScenarioRecord[]            $records
+     * @param array<string, list<int>>    $sourceFiles  Fichiers source de l'univers
+     *        JAMAIS touchés par un test, avec leurs lignes exécutables (analyse
+     *        statique). Ils apparaissent à 0 % pour refléter l'avancement réel.
      */
     private function __construct(
         public readonly array  $records,
         public readonly string $srcRoot,
         public readonly string $generatedAt,
+        public readonly array  $sourceFiles = [],
     ) {}
 
     /** Charge depuis le JSON produit par l'extension PHPUnit. */
@@ -42,23 +46,31 @@ final class CoverageData
     {
         $data = ScenarioStore::loadFromFile($jsonFile);
 
-        return new self($data['records'], $data['srcRoot'], $data['generatedAt']);
+        return new self($data['records'], $data['srcRoot'], $data['generatedAt'], $data['sourceFiles']);
     }
 
     /**
      * Construit directement depuis des enregistrements en mémoire.
      *
-     * @param ScenarioRecord[] $records
+     * @param ScenarioRecord[]         $records
+     * @param array<string, list<int>> $sourceFiles  cf. constructeur
      */
-    public static function fromRecords(array $records, string $srcRoot = '', string $generatedAt = ''): self
+    public static function fromRecords(array $records, string $srcRoot = '', string $generatedAt = '', array $sourceFiles = []): self
     {
-        return new self($records, $srcRoot, $generatedAt);
+        return new self($records, $srcRoot, $generatedAt, $sourceFiles);
     }
 
     /**
      * Carte de couverture : [fichier][ligne][] = id de scénario.
      * Une ligne exécutable mais jamais couverte est présente avec une liste vide,
      * pour que le rapport puisse distinguer « non couverte » de « non exécutable ».
+     *
+     * Valeurs brutes Xdebug : 1 = exécutée, -1 = exécutable non exécutée,
+     * -2 = code mort (XDEBUG_CC_DEAD_CODE — ex. accolade fermante après un
+     * return). Le code mort n'est PAS exécutable : on l'écarte du total, comme
+     * le fait php-code-coverage. Sans cela, ces lignes gonflent le dénominateur
+     * et empêchent un fichier d'atteindre 100 % (divergence connue avec pcov,
+     * qui ne les remonte pas).
      *
      * @return array<string, array<int, list<string>>>
      */
@@ -74,10 +86,26 @@ final class CoverageData
                 foreach ($lines as $lineNo => $covered) {
                     if ($covered === 1) {
                         $map[$file][$lineNo][] = $record->id;
-                    } elseif (!isset($map[$file][$lineNo])) {
+                    } elseif ($covered === -1 && !isset($map[$file][$lineNo])) {
                         $map[$file][$lineNo] = [];
                     }
+                    // $covered === -2 : code mort, ligne non exécutable → ignorée.
                 }
+            }
+        }
+
+        // Fichiers de l'univers jamais touchés par un test : toutes leurs lignes
+        // exécutables (analyse statique) sont marquées non couvertes (liste vide).
+        // On n'écrase JAMAIS un fichier déjà présent via les records : un fichier
+        // testé garde ses données runtime (cohérentes, capables d'atteindre 100 %),
+        // alors que la liste statique inclut des lignes — signatures notamment —
+        // que Xdebug n'exécute jamais.
+        foreach ($this->sourceFiles as $file => $lines) {
+            if (isset($map[$file])) {
+                continue;
+            }
+            foreach ($lines as $lineNo) {
+                $map[$file][$lineNo] = [];
             }
         }
 
@@ -151,7 +179,7 @@ final class CoverageData
     /**
      * Statistiques globales (compteurs de scénarios par statut + couverture agrégée).
      *
-     * @return array{files:int,scenarios:int,passed:int,failed:int,skipped:int,errored:int,globalCovered:int,globalTotal:int,globalPercent:int}
+     * @return array{files:int,filesCovered:int,scenarios:int,passed:int,failed:int,skipped:int,errored:int,globalCovered:int,globalTotal:int,globalPercent:int}
      */
     public function globalStats(): array
     {
@@ -160,12 +188,15 @@ final class CoverageData
             $byStatus[$record->status] = ($byStatus[$record->status] ?? 0) + 1;
         }
 
-        $fileStats = $this->fileStats();
-        $covered   = array_sum(array_column($fileStats, 'covered'));
-        $total     = array_sum(array_column($fileStats, 'total'));
+        $fileStats    = $this->fileStats();
+        $covered      = array_sum(array_column($fileStats, 'covered'));
+        $total        = array_sum(array_column($fileStats, 'total'));
+        // Fichiers ayant au moins une ligne couverte : indicateur d'avancement.
+        $filesCovered = count(array_filter($fileStats, static fn (array $s): bool => $s['covered'] > 0));
 
         return [
             'files'         => count($fileStats),
+            'filesCovered'  => $filesCovered,
             'scenarios'     => count($this->records),
             'passed'        => $byStatus['passed'],
             'failed'        => $byStatus['failed'],

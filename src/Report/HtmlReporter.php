@@ -18,21 +18,24 @@ use Lokris\ScenarioCoverage\Coverage\ScenarioRecord;
 final class HtmlReporter
 {
     /**
-     * @param ScenarioRecord[] $records   Enregistrements produits par ScenarioStore
-     * @param string             $projectName  Nom affiché dans l'en-tête
-     * @param string             $srcRoot   Chemin absolu du src/ (pour les paths relatifs)
-     * @param string             $generatedAt Date de génération
+     * @param ScenarioRecord[]         $records      Enregistrements produits par ScenarioStore
+     * @param string                   $projectName  Nom affiché dans l'en-tête
+     * @param string                   $srcRoot      Chemin absolu du src/ (pour les paths relatifs)
+     * @param string                   $generatedAt  Date de génération
+     * @param array<string, list<int>> $sourceFiles  Fichiers jamais testés (lignes exécutables) → 0 %
      */
     public static function generate(
         array  $records,
         string $projectName  = 'Project',
         string $srcRoot      = '',
         string $generatedAt  = '',
+        array  $sourceFiles  = [],
     ): string {
         // ── 1-3. Agrégation déléguée à CoverageData (logique partagée) ────────
         // Même cœur de calcul que celui exposé aux consommateurs externes
         // (ex. dashboard Symfony) : aucune duplication de l'agrégation.
-        $data          = CoverageData::fromRecords($records, $srcRoot, $generatedAt);
+        // $sourceFiles : fichiers de l'univers jamais testés (affichés à 0 %).
+        $data          = CoverageData::fromRecords($records, $srcRoot, $generatedAt, $sourceFiles);
         $fileMap       = $data->fileMap();
         $scenarioStats = $data->scenarioStats();
         $fileStats     = $data->fileStats();
