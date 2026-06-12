@@ -39,6 +39,13 @@ final class CoverageData
         public readonly string $srcRoot,
         public readonly string $generatedAt,
         public readonly array  $sourceFiles = [],
+        /**
+         * Lignes exclues du calcul via @codeCoverageIgnore / #[CodeCoverageIgnore].
+         * Retirées du numérateur ET du dénominateur dans {@see fileMap()}.
+         *
+         * @var array<string, list<int>>
+         */
+        public readonly array  $ignoredLines = [],
     ) {}
 
     /** Charge depuis le JSON produit par l'extension PHPUnit. */
@@ -46,7 +53,13 @@ final class CoverageData
     {
         $data = ScenarioStore::loadFromFile($jsonFile);
 
-        return new self($data['records'], $data['srcRoot'], $data['generatedAt'], $data['sourceFiles']);
+        return new self(
+            $data['records'],
+            $data['srcRoot'],
+            $data['generatedAt'],
+            $data['sourceFiles'],
+            $data['ignoredLines'] ?? [],
+        );
     }
 
     /**
@@ -54,10 +67,11 @@ final class CoverageData
      *
      * @param ScenarioRecord[]         $records
      * @param array<string, list<int>> $sourceFiles  cf. constructeur
+     * @param array<string, list<int>> $ignoredLines cf. constructeur
      */
-    public static function fromRecords(array $records, string $srcRoot = '', string $generatedAt = '', array $sourceFiles = []): self
+    public static function fromRecords(array $records, string $srcRoot = '', string $generatedAt = '', array $sourceFiles = [], array $ignoredLines = []): self
     {
-        return new self($records, $srcRoot, $generatedAt, $sourceFiles);
+        return new self($records, $srcRoot, $generatedAt, $sourceFiles, $ignoredLines);
     }
 
     /**
@@ -80,10 +94,25 @@ final class CoverageData
             return $this->fileMap;
         }
 
+        // Index des lignes exclues : [fichier][ligne] => true.
+        // Une ligne exclue est retirée du calcul (ni couverte, ni à couvrir) : elle
+        // n'apparaît jamais dans la carte. Un fichier dont TOUTES les lignes sont
+        // exclues disparaît donc entièrement des stats (0 entrée), comme attendu pour
+        // du code inatteignable (classe abstraite sans implémentation, etc.).
+        $ignored = [];
+        foreach ($this->ignoredLines as $file => $lines) {
+            foreach ($lines as $lineNo) {
+                $ignored[$file][$lineNo] = true;
+            }
+        }
+
         $map = [];
         foreach ($this->records as $record) {
             foreach ($record->coverage as $file => $lines) {
                 foreach ($lines as $lineNo => $covered) {
+                    if (isset($ignored[$file][$lineNo])) {
+                        continue;
+                    }
                     if ($covered === 1) {
                         $map[$file][$lineNo][] = $record->id;
                     } elseif ($covered === -1 && !isset($map[$file][$lineNo])) {
@@ -105,6 +134,9 @@ final class CoverageData
                 continue;
             }
             foreach ($lines as $lineNo) {
+                if (isset($ignored[$file][$lineNo])) {
+                    continue;
+                }
                 $map[$file][$lineNo] = [];
             }
         }

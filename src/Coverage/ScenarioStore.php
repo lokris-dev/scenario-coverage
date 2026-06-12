@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lokris\ScenarioCoverage\Coverage;
 
 use RuntimeException;
+use SebastianBergmann\CodeCoverage\StaticAnalysis\ParsingFileAnalyser;
 
 /**
  * Accumule les enregistrements de scénario pendant l'exécution de la suite PHPUnit,
@@ -305,15 +306,22 @@ final class ScenarioStore
         }
         $sourceFiles = (new SourceScanner($this->srcRoot, $this->excludeDirs))->scanUncovered($covered);
 
+        // Lignes explicitement exclues via @codeCoverageIgnore / #[CodeCoverageIgnore].
+        // Calculées pour TOUT l'univers (fichiers couverts + jamais touchés), puis
+        // soustraites en aval par CoverageData. On conserve la carte à part sans mutiler
+        // les données brutes, pour que l'exclusion reste inspectable et auditable.
+        $ignoredLines = $this->computeIgnoredLines(array_keys($covered), array_keys($sourceFiles));
+
         $data = [
-            'version'   => '1',
+            'version'   => '2',
             'srcRoot'   => $this->srcRoot,
             'generatedAt' => date('Y-m-d H:i:s'),
             'records'   => array_map(
                 fn(ScenarioRecord $r): array => $r->toArray(),
                 $this->records
             ),
-            'sourceFiles' => $sourceFiles,
+            'sourceFiles'  => $sourceFiles,
+            'ignoredLines' => $ignoredLines,
         ];
 
         $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -330,9 +338,75 @@ final class ScenarioStore
     }
 
     /**
+     * Calcule les lignes exclues via l'annotation native `@codeCoverageIgnore`
+     * (docblock sur classe/méthode/fonction, ou bornes Start/End) pour tout l'univers
+     * (fichiers déjà couverts + jamais touchés). Renvoie uniquement les fichiers ayant
+     * au moins une ligne EXÉCUTABLE exclue, indexés par realpath.
+     *
+     * On s'appuie sur l'analyseur statique de php-code-coverage (même biblio que PHPUnit),
+     * déjà utilisé par SourceScanner. Absent (hors env de test) : on renonce silencieusement.
+     *
+     * Subtilité : `ignoredLinesFor()` renvoie aussi systématiquement la ligne de
+     * déclaration de chaque classe (comportement interne de php-code-coverage). On
+     * intersecte donc avec `executableLinesIn()` pour ne retenir que les lignes réellement
+     * exécutables effectivement annotées — sinon on retirerait des lignes parasites.
+     *
+     * @param list<string> $coveredFiles
+     * @param list<string> $sourceFiles
+     * @return array<string, list<int>>
+     */
+    private function computeIgnoredLines(array $coveredFiles, array $sourceFiles): array
+    {
+        if (!class_exists(ParsingFileAnalyser::class)) {
+            return [];
+        }
+
+        // ignoreDeprecatedCode = FALSE : on ne veut exclure QUE le code explicitement
+        // annoté @codeCoverageIgnore, pas tout le code @deprecated (souvent encore testé).
+        $analyser = new ParsingFileAnalyser(true, false);
+        // Dédup : un realpath peut figurer dans les deux listes selon les cas.
+        $files    = array_values(array_unique([...$coveredFiles, ...$sourceFiles]));
+        $result   = [];
+
+        foreach ($files as $file) {
+            // Garde : ne traiter que les fichiers portant réellement le marqueur
+            // d'exclusion — sous forme d'ATTRIBUT PHP 8 #[CodeCoverageIgnore] (résolu en
+            // FQCN par l'analyseur) ou, à défaut, l'annotation docblock @codeCoverageIgnore.
+            // Test insensible à la casse : couvre les deux écritures (« CodeCoverageIgnore »
+            // pour l'attribut, « codeCoverageIgnore » pour l'annotation).
+            // Sans cette garde, ignoredLinesFor() renverrait la ligne de déclaration de
+            // CHAQUE classe (comportement interne de php-code-coverage), décalant le
+            // dénominateur de tous les fichiers. On reste donc strictement sur l'intention.
+            $source = @file_get_contents($file);
+            if ($source === false || stripos($source, 'codecoverageignore') === false) {
+                continue;
+            }
+
+            try {
+                $ignored    = $analyser->ignoredLinesFor($file);
+                $executable = array_keys($analyser->executableLinesIn($file));
+            } catch (\Throwable) {
+                // Fichier non analysable : on n'exclut rien plutôt que d'échouer.
+                continue;
+            }
+
+            $ignoredExecutable = array_values(array_intersect(
+                array_map('intval', $ignored),
+                array_map('intval', $executable),
+            ));
+
+            if ($ignoredExecutable !== []) {
+                $result[$file] = $ignoredExecutable;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Charge un store depuis un fichier JSON existant.
      *
-     * @return array{srcRoot: string, generatedAt: string, records: ScenarioRecord[], sourceFiles: array<string, list<int>>}
+     * @return array{srcRoot: string, generatedAt: string, records: ScenarioRecord[], sourceFiles: array<string, list<int>>, ignoredLines: array<string, list<int>>}
      */
     public static function loadFromFile(string $jsonFile): array
     {
@@ -357,6 +431,11 @@ final class ScenarioStore
             'sourceFiles' => array_map(
                 static fn(array $lines): array => array_map('intval', $lines),
                 (array) ($data['sourceFiles'] ?? [])
+            ),
+            // Rétrocompatible : un JSON v1 sans 'ignoredLines' donne une carte vide.
+            'ignoredLines' => array_map(
+                static fn(array $lines): array => array_map('intval', $lines),
+                (array) ($data['ignoredLines'] ?? [])
             ),
         ];
     }
